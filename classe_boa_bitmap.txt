@@ -1,0 +1,70 @@
+package ClassesApoio;
+
+import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
+import android.graphics.ImageFormat;
+import android.graphics.Rect;
+import android.graphics.YuvImage;
+
+import androidx.camera.core.ImageProxy;
+
+import java.io.ByteArrayOutputStream;
+import java.nio.ByteBuffer;
+
+/**
+ * Classe utilitária para conversão de formatos de imagem da CameraX.
+ * Responsável por transformar o ImageProxy (formato de processamento YUV)
+ * em Bitmap (formato de exibição e edição).
+ */
+public class BitmapUtils {
+
+    /**
+     * Converte um objeto ImageProxy (YUV_420_888) vindo da câmera para Bitmap.
+     * * @param imageProxy O quadro de imagem capturado pela CameraX.
+     * @return Bitmap pronto para ser exibido em uma ImageView ou enviado para API.
+     */
+    public static Bitmap toBitmap(ImageProxy imageProxy) {
+
+        // 1. A CameraX trabalha com 3 planos de dados (Y, U e V).
+        // Y = Luminância (preto e branco), U/V = Canais de cor.
+        ImageProxy.PlaneProxy[] planes = imageProxy.getPlanes();
+
+        ByteBuffer yBuffer = planes[0].getBuffer();
+        ByteBuffer uBuffer = planes[1].getBuffer();
+        ByteBuffer vBuffer = planes[2].getBuffer();
+
+        int ySize = yBuffer.remaining();
+        int uSize = uBuffer.remaining();
+        int vSize = vBuffer.remaining();
+
+        // 2. Criamos um array de bytes no formato NV21 (padrão antigo do Android).
+        // O formato final terá o tamanho da soma de todos os canais.
+        byte[] nv21 = new byte[ySize + uSize + vSize];
+
+        // 3. Copia os buffers para o array único (Layout: Y followed by V then U).
+        yBuffer.get(nv21, 0, ySize);
+        vBuffer.get(nv21, ySize, vSize);
+        uBuffer.get(nv21, ySize + vSize, uSize);
+
+        // 4. Cria uma representação YUV que o Android consegue entender.
+        YuvImage yuvImage = new YuvImage(
+                nv21,
+                ImageFormat.NV21,
+                imageProxy.getWidth(),
+                imageProxy.getHeight(),
+                null
+        );
+
+        // 5. Comprime os dados brutos YUV para o formato JPEG (em memória).
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        yuvImage.compressToJpeg(
+                new Rect(0, 0, imageProxy.getWidth(), imageProxy.getHeight()),
+                100, // Qualidade máxima
+                out
+        );
+
+        // 6. Transforma os bytes comprimidos em um objeto Bitmap utilizável.
+        byte[] imageBytes = out.toByteArray();
+        return BitmapFactory.decodeByteArray(imageBytes, 0, imageBytes.length);
+    }
+}
